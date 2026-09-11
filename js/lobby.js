@@ -35,6 +35,8 @@ export class Lobby {
 
     this.pendingInvite = null;
     this.invited = new Set();
+    this.accepting = null;
+    this.log = [];
 
     const saved = localStorage.getItem(NAME_KEY);
     this.el.name.value = saved || RANDOM_NAMES[(Math.random() * RANDOM_NAMES.length) | 0];
@@ -49,8 +51,11 @@ export class Lobby {
     this.el.code.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.joinCode(); });
 
     this.el.inviteYes.addEventListener('click', () => {
-      if (this.pendingInvite) this.net.accept(this.pendingInvite);
-      this.hideInvite();
+      if (!this.pendingInvite) { this.hideInvite(); return; }
+      this.accepting = this.pendingInvite;
+      this.net.accept(this.pendingInvite);
+      this.el.inviteYes.disabled = true;
+      this.el.inviteYes.textContent = 'Bağlanılıyor…';
     });
     this.el.inviteNo.addEventListener('click', () => {
       if (this.pendingInvite) this.net.decline(this.pendingInvite);
@@ -143,7 +148,7 @@ export class Lobby {
         btn.addEventListener('click', () => {
           this.net.invite(p.id);
           this.invited.add(p.id);
-          setTimeout(() => { this.invited.delete(p.id); this.render(); }, 12000);
+          this.setStatus(`${p.name} davet edildi — yanıt bekleniyor…`, true);
           this.render();
         });
         li.appendChild(btn);
@@ -159,12 +164,42 @@ export class Lobby {
   }
   hideInvite() {
     this.pendingInvite = null;
+    this.accepting = null;
     this.el.invite.classList.add('hidden');
+    this.el.inviteYes.disabled = false;
+    this.el.inviteYes.textContent = 'Kabul Et';
+  }
+
+  /** Davet sonucu: zaman aşımı, ret ya da kopma */
+  inviteResult(reason, name) {
+    this.invited.clear();
+    this.hideInvite();
+    const text = reason === 'decline' ? `${name || 'Rakip'} daveti reddetti.`
+      : reason === 'busy' ? `${name || 'Rakip'} başka maçta.`
+      : reason === 'timeout' ? 'Karşı taraftan yanıt gelmedi — tekrar dene.'
+      : 'Bağlantı koptu.';
+    this.setStatus(text, this.net.connected);
+    this.render();
+  }
+
+  setLink(info) {
+    if (!info) return;
+    if (info.state === 'connected') {
+      this.setStatus("Aynı Wi-Fi'daki oyuncular burada görünür.", true);
+    } else if (info.state === 'failed') {
+      this.setStatus('Sinyalleşme ağına bağlanılamadı. Oda kodunu deneyin.', false);
+    }
+  }
+
+  addLog(line) {
+    this.log.push(`${new Date().toLocaleTimeString('tr-TR')}  ${line}`);
+    if (this.log.length > 60) this.log.shift();
   }
 
   startMatch(info) {
     this.hide();
     this.hideInvite();
+    this.accepting = null;
     this.invited.clear();
     this.el.badge.classList.remove('hidden');
     this.el.badgeName.textContent = info.name;

@@ -54,9 +54,16 @@ Farklı ağdaysanız lobideki **oda kodu** kutusunu kullanın — ikiniz de ayn�
 
 ### Bağlantı
 
-Buluşma internet üzerinden (Trystero / nostr relay), ama bağlantı kurulduktan sonra
-veri **WebRTC ile doğrudan iki cihaz arasında** akar. Aynı Wi-Fi'daysanız yerel
-adresler seçilir, trafik router'dan bile çıkmaz.
+Buluşma internet üzerinden, ama bağlantı kurulduktan sonra veri **WebRTC ile
+doğrudan iki cihaz arasında** akar. Aynı Wi-Fi'daysanız yerel adresler seçilir,
+trafik router'dan bile çıkmaz.
+
+Sinyalleşme için üç ağ sırayla denenir (**nostr → torrent → mqtt**); biri
+engelliyse ya da düşerse diğerine geçilir.
+
+Davet akışı üç adımlı ve **tekrarlı**: `davet → kabul → başla`. Tek bir paket
+kaybolduğunda taraflardan biri lobide asılı kalmaz — iki taraf da karşılıklı
+onay almadan maç başlamaz, yanıt gelmezse "tekrar dene" der.
 
 | Durum | Gecikme |
 |---|---|
@@ -75,6 +82,27 @@ adresler seçilir, trafik router'dan bile çıkmaz.
   oyunculu hâliyle aynı kalır
 - Skor ev sahibinde tutulur, misafirde sıralaması ters çevrilerek gösterilir
 - Bağlantı koparsa oyun otomatik yapay zekâya döner, maç yarıda kalmaz
+
+### Sorun çıkarsa: `D` tuşu
+
+Oyun içinde `D` tanılama panelini açar:
+
+```
+strateji : nostr          hangi sinyalleşme ağı kullanılıyor
+kimlik   : atjeUkUb       kendi eş kimliğin
+lobide   : 1 eş           kaç kişi görünüyor
+maç      : EV SAHİBİ · Ahmet
+gecikme  : 1 ms           ping
+son paket: 1 ms önce      rakipten en son ne zaman veri geldi
+durum    : toss           oyun durumu
+```
+
+Altında son ağ olayları listelenir. Bir şey ters giderse bu panelin görüntüsü
+sorunu doğrudan gösterir.
+
+**Sekme arka plandayken tarayıcı kare döngüsünü durdurur**, o yüzden o taraf
+donar (bağlantı kopmaz, ping devam eder). Rakibin donduğunda rozette
+"donuk" yazar. İki cihazda da pencereyi önde tut.
 
 ### Vercel'de
 

@@ -514,7 +514,27 @@ function adaptQuality(dtMs) {
 }
 
 function frame(now) {
-  requestAnimationFrame(frame);
+  // --- tanılama paneli ---
+setInterval(() => {
+  const box = document.getElementById('diag');
+  if (!box || box.classList.contains('hidden')) return;
+  const age = MP.on ? Math.round(performance.now() - MP.lastRecv) : 0;
+  box.textContent = [
+    `strateji : ${net.strategy || '-'}`,
+    `kimlik   : ${(net.selfId || '-').slice(0, 8)}`,
+    `lobide   : ${net.list().length} eş`,
+    `maç      : ${MP.on ? (MP.isHost ? 'EV SAHİBİ' : 'MİSAFİR') + ' · ' + MP.name : 'yok'}`,
+    `gecikme  : ${net.rtt} ms`,
+    `son paket: ${age} ms önce`,
+    `durum    : ${G.state}`,
+    `top      : ${ball.live ? 'canlı' : 'duruyor'} ${ball.pos.toArray().map(n => n.toFixed(1)).join(', ')}`,
+    `skor     : ${hud.pts.join('-')}  oyun ${hud.games.join('-')}`,
+    '',
+    ...(lobby ? lobby.log.slice(-8) : []),
+  ].join('\n');
+}, 400);
+
+requestAnimationFrame(frame);
   const dtMs = now - last;
   const dt = Math.min(0.05, dtMs / 1000);
   last = now;
@@ -683,10 +703,14 @@ let lobby = null;
 const net = new Net({
   onPeers: (list) => lobby && lobby.render(list),
   onInvite: (id, name) => lobby && lobby.showInvite(id, name),
+  onInviteResult: (reason, name) => lobby && lobby.inviteResult(reason, name),
+  onStatus: (info) => lobby && lobby.setLink(info),
+  onLog: (line) => { console.log('[ağ]', line); lobby && lobby.addLog(line); },
   onMatchStart: (info) => lobby && lobby.startMatch(info),
   onMatchEnd: (reason) => lobby && lobby.endMatch(reason),
   onRacket: (d) => {
     MP.lastRecv = performance.now();
+    MP.warned = false;
     MP.remote.p = d.p; MP.remote.t = d.t; MP.remote.f = d.f;
     if (d.s > 0.55 && MP.prevSwing <= 0.55) opponent.swing();
     MP.prevSwing = d.s;
@@ -695,9 +719,25 @@ const net = new Net({
   onState: (d) => onRemoteState(d),
 });
 
-function startMultiplayer(info) {
+/** Henüz girdi seçilmediyse önce kamerayı dene, olmazsa fareye düş. */
+async function ensureInput() {
+  if (hands.mode !== 'none') return;
+  loading.classList.add('show');
+  loadingText.textContent = 'Kamera hazırlanıyor…';
+  try {
+    await hands.startCamera((m) => { loadingText.textContent = m; });
+  } catch (e) {
+    console.warn('[el takibi] maç için kamera açılamadı, fare moduna geçildi', e);
+    hands.startMouse();
+    hud.say('Kamera açılmadı — fare modu', '', 2.0);
+  } finally {
+    loading.classList.remove('show');
+  }
+}
+
+async function startMultiplayer(info) {
   if (G.state === 'menu') {
-    if (hands.mode === 'none') hands.startMouse();
+    await ensureInput();
     beginGame();
   }
   MP.on = true;
@@ -795,6 +835,17 @@ function hostGs() {
   return 1;
 }
 
+// Sekme arka plana alınınca tarayıcı kare döngüsünü durdurur; oyun donar.
+// Bunu sessizce yaşamak yerine açıkça söyle.
+let hiddenSince = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hiddenSince = performance.now(); return; }
+  if (MP.on && hiddenSince && performance.now() - hiddenSince > 700) {
+    hud.say('Pencere öne geldi — oyun devam ediyor', '', 1.4);
+  }
+  hiddenSince = 0;
+});
+
 function netTick(now) {
   if (!MP.on) return;
   if (now - MP.lastSend < 33) return;
@@ -819,8 +870,20 @@ function netTick(now) {
     });
   }
 
-  // bağlantı sağlığı
-  if (lobby) lobby.setLinkQuality(now - MP.lastRecv < 2500);
+  // bağlantı sağlığı + gecikme
+  const quiet = now - MP.lastRecv;
+  const ok = quiet < 2500;
+  if (lobby) lobby.setLinkQuality(ok);
+  const el = document.getElementById('mp-name');
+  if (el) {
+    el.textContent = quiet > 1600
+      ? `${MP.name} · donuk`
+      : net.rtt ? `${MP.name} · ${net.rtt} ms` : MP.name;
+  }
+  if (quiet > 2500 && !MP.warned) {
+    MP.warned = true;
+    hud.say('Rakibin penceresi arka planda olabilir…', '', 2.0);
+  } else if (quiet < 1200) MP.warned = false;
 }
 
 // ---------------------------------------------------------------- menü
@@ -909,6 +972,10 @@ addEventListener('keydown', (e) => {
     if (iv && !iv.classList.contains('hidden')) { document.getElementById('invite-no').click(); return; }
     if (lb && !lb.classList.contains('hidden')) { lb.classList.add('hidden'); return; }
   }
+  if (e.key === 'd' || e.key === 'D') {
+    const box = document.getElementById('diag');
+    if (box) box.classList.toggle('hidden');
+  }
   if (e.key === 'n' || e.key === 'N') {
     const mode = env.mode === 'day' ? 'night' : 'day';
     applyLook(mode);
@@ -927,6 +994,26 @@ addEventListener('keydown', (e) => {
     hud.say(`Zorluk: ${diff().name}`, '', 1.1);
   }
 });
+
+// --- tanılama paneli ---
+setInterval(() => {
+  const box = document.getElementById('diag');
+  if (!box || box.classList.contains('hidden')) return;
+  const age = MP.on ? Math.round(performance.now() - MP.lastRecv) : 0;
+  box.textContent = [
+    `strateji : ${net.strategy || '-'}`,
+    `kimlik   : ${(net.selfId || '-').slice(0, 8)}`,
+    `lobide   : ${net.list().length} eş`,
+    `maç      : ${MP.on ? (MP.isHost ? 'EV SAHİBİ' : 'MİSAFİR') + ' · ' + MP.name : 'yok'}`,
+    `gecikme  : ${net.rtt} ms`,
+    `son paket: ${age} ms önce`,
+    `durum    : ${G.state}`,
+    `top      : ${ball.live ? 'canlı' : 'duruyor'} ${ball.pos.toArray().map(n => n.toFixed(1)).join(', ')}`,
+    `skor     : ${hud.pts.join('-')}  oyun ${hud.games.join('-')}`,
+    '',
+    ...(lobby ? lobby.log.slice(-8) : []),
+  ].join('\n');
+}, 400);
 
 requestAnimationFrame(frame);
 

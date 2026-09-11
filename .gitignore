@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+.AppleDouble
+
+# editör
+.vscode/
+.idea/
+*.swp
+
+# Vercel
+.vercel/
+
+# günlükler
+*.log

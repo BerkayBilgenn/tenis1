@@ -317,3 +317,11 @@ body{font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased
   #mp-badge{top:auto;bottom:52px}
   .lobby-panel h2{font-size:19px}
 }
+
+#diag{
+  position:absolute;left:22px;top:96px;z-index:16;max-width:340px;
+  background:rgba(4,10,20,.88);border:1px solid var(--line);border-radius:10px;
+  padding:10px 12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:#9fc8f0;white-space:pre-wrap;pointer-events:none;backdrop-filter:blur(10px);
+}
+#diag.hidden{display:none}
