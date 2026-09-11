@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>El Takipli Tenis</title>
+<link rel="stylesheet" href="css/style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div id="app">
+  <canvas id="scene"></canvas>
+
+  <!-- ÜST HUD -->
+  <div id="hud-top">
+    <div class="scoreboard">
+      <div class="row opp">
+        <span class="name">RAKİP</span>
+        <span class="sets" id="opp-games">0</span>
+        <span class="pts" id="opp-points">0</span>
+      </div>
+      <div class="row you">
+        <span class="name">SEN</span>
+        <span class="sets" id="you-games">0</span>
+        <span class="pts" id="you-points">0</span>
+      </div>
+    </div>
+
+    <div class="meters">
+      <div class="meter"><span class="lbl">RALLİ</span><span class="val" id="rally">0</span></div>
+      <div class="meter"><span class="lbl">HIZ</span><span class="val" id="speed">0<i>km/s</i></span></div>
+      <div class="meter"><span class="lbl">EN İYİ</span><span class="val" id="best">0<i>ralli</i></span></div>
+    </div>
+  </div>
+
+  <!-- ORTA MESAJ -->
+  <div id="center-msg"><span></span></div>
+
+  <!-- VURUŞ KALİTESİ -->
+  <div id="feel"><span></span></div>
+
+  <!-- ALT SOL: HAREKET GÖSTERGESİ -->
+  <div id="gestures">
+    <div class="g" data-g="track"><b>✋</b><span>Raket</span></div>
+    <div class="g" data-g="pinch"><b>🤏</b><span>Servis</span></div>
+    <div class="g" data-g="fist"><b>✊</b><span>Smaç</span></div>
+    <div class="g" data-g="swing"><b>💥</b><span>Vuruş</span></div>
+  </div>
+
+  <!-- ALT SAĞ: WEBCAM -->
+  <div id="cam-box">
+    <video id="cam" playsinline muted></video>
+    <canvas id="cam-overlay"></canvas>
+    <div id="cam-label">EL TAKİBİ</div>
+  </div>
+
+  <!-- BAŞLANGIÇ EKRANI -->
+  <div id="start-screen">
+    <div class="panel">
+      <h1>EL TAKİPLİ <em>TENİS</em></h1>
+      <p class="sub">Kamerana el salla — raket seninle hareket etsin.</p>
+
+      <ul class="howto">
+        <li><b>✋</b><div><strong>Elini oynat</strong><span>Raket avucunu takip eder</span></div></li>
+        <li><b>💥</b><div><strong>Hızlı savur</strong><span>Ne kadar hızlı savurursan o kadar sert vuruş</span></div></li>
+        <li><b>↔</b><div><strong>Elini yana eğ</strong><span>Topun sağa-sola açısını belirler</span></div></li>
+        <li><b>↕</b><div><strong>Yukarı/aşağı savur</strong><span>Yukarı savuruş topspin, aşağı slice</span></div></li>
+        <li><b>🤏</b><div><strong>Parmakları birleştir</strong><span>Servis — top havaya atılır, savurmasan bile girer</span></div></li>
+        <li><b>✊</b><div><strong>Yumruk yap</strong><span>Smaç modu — güçlü ama riskli</span></div></li>
+      </ul>
+
+      <div class="difficulty">
+        <span>Zorluk</span>
+        <button data-diff="0">Kolay</button>
+        <button data-diff="1" class="active">Normal</button>
+        <button data-diff="2">Zor</button>
+      </div>
+
+      <div class="actions">
+        <button id="btn-camera" class="primary">📷 Kamerayı Başlat</button>
+        <button id="btn-mouse" class="ghost">🖱 Fareyle Oyna</button>
+      </div>
+      <p id="warm" class="warm"></p>
+      <p id="start-status"></p>
+      <p class="tiny">İlk açılışta el takibi modeli internetten iniyor (~8&nbsp;MB). Kamera görüntüsü cihazından çıkmaz.</p>
+    </div>
+  </div>
+
+  <div id="loading"><div class="spinner"></div><span>El takibi yükleniyor…</span></div>
+
+  <div id="hint">Boşluk: servis · M: fare modu · G: yardım · N: gece/gündüz · S: ses · 1/2/3: zorluk · R: sıfırla</div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
