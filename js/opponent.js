@@ -123,7 +123,17 @@ export class Opponent {
     this.lunge = 0;
     this.seenShot = -1;
     this.decision = null;   // 'good' | 'error' | 'miss' | 'unreachable'
+    this.remote = null;     // çok oyunculuda uzak oyuncunun hedefi
   }
+
+  /** Çok oyunculu: yapay zekâ yerine karşıdaki oyuncunun konumu sürsün. */
+  setRemote(x, z) {
+    if (!this.remote) this.remote = { x: 0, z: BASE_Z };
+    this.remote.x = x;
+    this.remote.z = z;
+  }
+  clearRemote() { this.remote = null; }
+  swing() { this.swingT = 1; }
 
   reset() {
     this.x = 0; this.z = BASE_Z; this.vx = 0; this.vz = 0;
@@ -159,6 +169,13 @@ export class Opponent {
     }
 
     // --- tahmin + tepki süresi ---
+    if (this.remote) {
+      // uzak oyuncu: hedef doğrudan ağdan gelir
+      this.targetX = THREE.MathUtils.clamp(this.remote.x, -COURT.halfDoubles - 1.8, COURT.halfDoubles + 1.8);
+      this.targetZ = THREE.MathUtils.clamp(this.remote.z, -12.4, -3.6);
+      return this._move(dt, diff, time);
+    }
+
     const incoming = ball.live && ball.vel.z < -0.1 && ball.lastHitBy === 'player';
     if (incoming) {
       if (this.reactT > 0) {
@@ -178,6 +195,10 @@ export class Opponent {
       this.pred = null;
     }
 
+    return this._move(dt, diff, time);
+  }
+
+  _move(dt, diff, time) {
     // --- ivmeli hareket (sabit hız yerine) ---
     const accel = diff.speed * 3.4;
     const moveAxis = (cur, vel, target, maxV, maxA) => {

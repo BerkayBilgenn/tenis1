@@ -10,6 +10,8 @@ import { HandInput } from './hands.js';
 import { Hud } from './hud.js';
 import { Effects } from './effects.js';
 import * as SFX from './audio.js';
+import { Net } from './net.js';
+import { Lobby } from './lobby.js';
 
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
@@ -147,6 +149,18 @@ const G = {
 // Oyuncu kortta öne/geri hareket eder: kısa toplarda koşup öne çıkar,
 // lobda geri çekilir. El yalnız raketi yönetir, ayaklar otomatiktir.
 const player = { z: PLAYER.racketZ, vz: 0 };
+
+// ---------------------------------------------------------------- çok oyunculu
+// Ev sahibi fiziği simüle eder ve yayınlar; misafir kendi vuruşunu anında
+// uygular (tahmin), ev sahibi onayladığında otoriteye geri döner.
+const MP = {
+  on: false, isHost: false, name: '',
+  shotSeq: 0, pending: null, predictUntil: 0, ack: 0,
+  remote: { p: [0, 1, -11.15], t: 0, s: 0, f: 0 },
+  prevSwing: 0, lastSend: 0, lastRecv: 0,
+  prevScore: [0, 0, 0, 0],
+};
+const mpGuest = () => MP.on && !MP.isHost;
 const diff = () => DIFFICULTY[G.diff];
 
 // ---------------------------------------------------------------- yardımcı
@@ -236,6 +250,19 @@ function playerShot(hitInfo, isServe, stretched = false) {
   guideHit.material.opacity = 0;
   guideDot.material.opacity = 0;
 
+  if (MP.on) {
+    MP.shotSeq++;
+    net.sendShot({
+      id: MP.shotSeq,
+      p: from.toArray().map((n) => +n.toFixed(3)),
+      v: vel.toArray().map((n) => +n.toFixed(3)),
+      w: spin.toArray().map((n) => +n.toFixed(2)),
+      serve: isServe,
+    });
+    if (!MP.isHost) { MP.pending = MP.shotSeq; MP.predictUntil = performance.now() + 600; }
+    if (isServe) G.state = 'rally';
+  }
+
   if (isServe) {
     SFX.sfxServe();
   } else {
@@ -299,6 +326,12 @@ function nextServe() {
   G.idle = 0;
   player.z = PLAYER.racketZ; player.vz = 0; racket.stationZ = player.z;
   G.serverIsPlayer = (hud.games[0] + hud.games[1]) % 2 === 0;
+  if (MP.on) {
+    if (!MP.isHost) return;            // durumu ev sahibi belirler
+    if (G.serverIsPlayer) { G.state = 'ready'; hud.say('🤏 Senin servisin', '', 2.0); }
+    else { G.state = 'remoteserve'; ball.live = false; hud.say('Rakip servis atacak…', '', 1.6); }
+    return;
+  }
   opponent.reset();
   if (G.serverIsPlayer) {
     G.state = 'ready';
@@ -333,6 +366,21 @@ function resetMatch() {
 
 // ---------------------------------------------------------------- olaylar
 function handleBallEvents(events) {
+  // Misafir otorite değil: olayları yalnız ses/efekt için işler.
+  if (mpGuest()) {
+    for (const e of events) {
+      if (e.t === 'net') { fx.burst(ball.pos.clone(), 0xffffff, 8, 1.4); SFX.sfxNet(); }
+      else if (e.t === 'bounce') {
+        fx.mark(e.x, e.z);
+        const power = clamp(ball.vel.length() / 16, 0.3, 1.4);
+        fx.puff(e.x, e.z, power);
+        SFX.sfxBounce();
+        ball.squash(power);
+      }
+    }
+    return;
+  }
+
   for (const e of events) {
     if (e.t === 'net') {
       fx.burst(ball.pos.clone(), 0xffffff, 8, 1.4);
@@ -489,6 +537,7 @@ function tick(dtReal, now) {
   }
 
   racket.update(h, dt);
+  if (MP.on) opponent.setRemote(MP.remote.p[0], MP.remote.p[2] + 0.5);
   hud.update(dtReal, h);
   fx.update(dt);
   world.crowd.update(dtReal, time);
@@ -500,6 +549,7 @@ function tick(dtReal, now) {
     updateStation(dt);
     step(dt, time);
     updateGuides(time);
+    netTick(now);
 
     // el kaybolduysa uyar (ışık/çerçeve sorunu)
     if (hands.mode === 'camera') {
@@ -551,6 +601,12 @@ function step(dt, time) {
     return;
   }
   targetBox.material.opacity = Math.max(0, targetBox.material.opacity - dt * 0.4);
+
+  // ---- karşı taraf servis atacak (çok oyunculu) ----
+  if (G.state === 'remoteserve') {
+    opponent.update(dt, ball, diff(), time);
+    return;
+  }
 
   // ---- rakip servisi ----
   if (G.state === 'oppserve') {
@@ -612,8 +668,8 @@ function step(dt, time) {
       if (hit) playerShot(hit, false, stretched);
     }
 
-    // rakibin vuruşu
-    if (opponent.canHit(ball)) {
+    // rakibin vuruşu (çok oyunculuda karşıdaki insan vurur)
+    if (!MP.on && opponent.canHit(ball)) {
       if (!opponentShot()) {
         // yetişemedi -> ikinci sekmeyi bekle, olay akışı sayıyı verir
       }
@@ -621,10 +677,162 @@ function step(dt, time) {
   }
 }
 
+// ---------------------------------------------------------- ağ olayları
+let lobby = null;
+
+const net = new Net({
+  onPeers: (list) => lobby && lobby.render(list),
+  onInvite: (id, name) => lobby && lobby.showInvite(id, name),
+  onMatchStart: (info) => lobby && lobby.startMatch(info),
+  onMatchEnd: (reason) => lobby && lobby.endMatch(reason),
+  onRacket: (d) => {
+    MP.lastRecv = performance.now();
+    MP.remote.p = d.p; MP.remote.t = d.t; MP.remote.f = d.f;
+    if (d.s > 0.55 && MP.prevSwing <= 0.55) opponent.swing();
+    MP.prevSwing = d.s;
+  },
+  onShot: (d) => onRemoteShot(d),
+  onState: (d) => onRemoteState(d),
+});
+
+function startMultiplayer(info) {
+  if (G.state === 'menu') {
+    if (hands.mode === 'none') hands.startMouse();
+    beginGame();
+  }
+  MP.on = true;
+  MP.isHost = info.isHost;
+  MP.name = info.name;
+  MP.shotSeq = 0; MP.pending = null; MP.ack = 0; MP.prevSwing = 0;
+  MP.lastRecv = performance.now();
+  opponent.setRemote(0, -10.5);
+  hud.reset(); hud.best = 0; syncScoreboard();
+  G.rally = 0; hud.setRally(0);
+  hud.say(`${info.name} ile maç!`, 'good', 2.0);
+  if (MP.isHost) nextServe();
+  else { G.state = 'remoteserve'; ball.live = false; }
+}
+
+function stopMultiplayer(reason) {
+  if (!MP.on) return;
+  MP.on = false;
+  opponent.clearRemote();
+  opponent.reset();
+  const text = reason === 'disconnect' ? 'Bağlantı koptu — yapay zekâya dönüldü'
+    : reason === 'decline' ? 'Davet reddedildi'
+    : 'Maçtan çıkıldı';
+  hud.say(text, 'bad', 2.2);
+  if (G.state !== 'menu') resetMatch();
+}
+
+/** Karşı taraftan gelen vuruş (koordinatlar zaten bizim çerçevemizde) */
+function onRemoteShot(d) {
+  MP.lastRecv = performance.now();
+  if (!MP.on) return;
+  const p = new THREE.Vector3(...d.p);
+  const v = new THREE.Vector3(...d.v);
+  const w = new THREE.Vector3(...d.w);
+  ball.launch(p, v, w, 'opponent');
+  opponent.swing();
+  fx.ring(p, 0x38e8ff, 0.9);
+  SFX.sfxHit(0.55);
+  if (MP.isHost) {
+    MP.ack = d.i;
+    if (G.state === 'remoteserve') G.state = 'rally';
+    if (!d.q) { G.rally++; hud.setRally(G.rally); }
+  }
+}
+
+/** Ev sahibinin otoriter durumu (yalnız misafirde çalışır) */
+function onRemoteState(d) {
+  MP.lastRecv = performance.now();
+  if (!MP.on || MP.isHost) return;
+
+  // --- durum makinesi ---
+  const map = { 0: 'point', 1: 'rally', 2: 'remoteserve', 3: 'ready' };
+  const want = map[d.g] || 'rally';
+  if (G.state !== 'toss' && G.state !== want) {
+    G.state = want;
+    if (want === 'ready') { G.idle = 0; hud.say('🤏 Senin servisin', '', 2.0); }
+  }
+
+  // --- skor (ev sahibi sıralamasını ters çevir) ---
+  const sc = d.s || [0, 0, 0, 0];
+  if (sc.join() !== MP.prevScore.join()) {
+    const iWon = sc[1] > MP.prevScore[1] || sc[3] > MP.prevScore[3];
+    const theyWon = sc[0] > MP.prevScore[0] || sc[2] > MP.prevScore[2];
+    MP.prevScore = sc.slice();
+    hud.pts = [sc[1], sc[0]];
+    hud.games = [sc[3], sc[2]];
+    hud.render(); syncScoreboard();
+    if (iWon) { hud.say('SAYI SENİN!', 'good', 1.6); SFX.sfxPoint(true); world.crowd.cheer(); }
+    else if (theyWon) { hud.say('KAÇIRDIN', 'bad', 1.6); SFX.sfxPoint(false); }
+  }
+  hud.setRally(d.r || 0);
+
+  // --- top: kendi vuruşumuz onaylanana kadar tahmini koru ---
+  if (MP.pending !== null) {
+    if (d.a === MP.pending) MP.pending = null;
+    else if (performance.now() < MP.predictUntil) return;
+    else MP.pending = null;
+  }
+
+  ball.live = !!d.l;
+  ball.bounces = d.b;
+  ball.lastHitBy = d.m ? 'opponent' : 'player';
+  const target = new THREE.Vector3(...d.p);
+  if (ball.pos.distanceTo(target) > 1.2) ball.pos.copy(target);
+  else ball.pos.lerp(target, 0.45);
+  ball.vel.set(...d.v);
+  ball.spin.set(...d.w);
+}
+
+/** Ev sahibi: durum yayını */
+function hostGs() {
+  if (G.state === 'point') return 0;
+  if (G.state === 'ready') return 2;          // ev sahibi servis atıyor
+  if (G.state === 'remoteserve') return 3;    // misafir servis atacak
+  return 1;
+}
+
+function netTick(now) {
+  if (!MP.on) return;
+  if (now - MP.lastSend < 33) return;
+  MP.lastSend = now;
+
+  const swing = clamp(Math.max(racket.peak / 8, (hands.hand.swingPeak || 0) / 5), 0, 1);
+  net.sendRacket({
+    p: [+racket.pos.x.toFixed(3), +racket.pos.y.toFixed(3), +racket.stationZ.toFixed(3)],
+    t: +hands.hand.tilt.toFixed(3), s: +swing.toFixed(2), f: hands.hand.fist,
+  });
+
+  if (MP.isHost) {
+    net.sendState({
+      p: ball.pos.toArray().map((n) => +n.toFixed(3)),
+      v: ball.vel.toArray().map((n) => +n.toFixed(3)),
+      w: ball.spin.toArray().map((n) => +n.toFixed(2)),
+      live: ball.live, bounces: ball.bounces,
+      byHost: ball.lastHitBy === 'player',
+      gs: hostGs(),
+      score: [hud.pts[0], hud.pts[1], hud.games[0], hud.games[1]],
+      rally: hud.rally, ack: MP.ack, shotId: ball.shotId,
+    });
+  }
+
+  // bağlantı sağlığı
+  if (lobby) lobby.setLinkQuality(now - MP.lastRecv < 2500);
+}
+
 // ---------------------------------------------------------------- menü
 const startScreen = document.getElementById('start-screen');
 const loading = document.getElementById('loading');
 const status = document.getElementById('start-status');
+
+lobby = new Lobby({
+  net,
+  onMatchStart: (info) => startMultiplayer(info),
+  onMatchEnd: (reason) => stopMultiplayer(reason),
+});
 
 document.querySelectorAll('.difficulty button').forEach((b) => {
   b.addEventListener('click', () => {
@@ -695,6 +903,12 @@ addEventListener('keydown', (e) => {
   }
   if (e.key === 'm' || e.key === 'M') { hands.startMouse(); if (G.state === 'menu') beginGame(); }
   if (e.key === 'r' || e.key === 'R') { if (G.state !== 'menu') resetMatch(); }
+  if (e.key === 'Escape') {
+    const lb = document.getElementById('lobby');
+    const iv = document.getElementById('invite');
+    if (iv && !iv.classList.contains('hidden')) { document.getElementById('invite-no').click(); return; }
+    if (lb && !lb.classList.contains('hidden')) { lb.classList.add('hidden'); return; }
+  }
   if (e.key === 'n' || e.key === 'N') {
     const mode = env.mode === 'day' ? 'night' : 'day';
     applyLook(mode);

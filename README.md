@@ -38,6 +38,51 @@ Klavye: `Boşluk` servis · `M` fare modu · `G` yardım göstergeleri ·
 - Topa tam denk gelmezsen **uzanarak** çevirirsin (daha zayıf gider).
 - 7 saniye hareketsiz kalırsan otomatik servis atılır.
 
+## 👥 Arkadaşınla oynama (aynı Wi-Fi)
+
+Menüde **Arkadaşınla Oyna** → adını yaz → **aynı Wi-Fi'daki oyuncular listelenir**
+→ birine **Davet Et** → karşı taraf kabul edince maç başlar.
+
+### Nasıl buluşuyorsunuz
+
+Tarayıcı yerel ağı tarayamaz (mDNS/broadcast API'si yok). Onun yerine aynı ağdan
+çıkan herkesin **aynı genel IP'yi** paylaşmasından faydalanılır:
+`/api/network` çağrısı IP'nin tuzlanmış özetini döner, o özet lobi odasının adı olur.
+**IP hiçbir yerde saklanmaz**, sadece hash'i döner.
+
+Farklı ağdaysanız lobideki **oda kodu** kutusunu kullanın — ikiniz de aynı kodu yazın.
+
+### Bağlantı
+
+Buluşma internet üzerinden (Trystero / nostr relay), ama bağlantı kurulduktan sonra
+veri **WebRTC ile doğrudan iki cihaz arasında** akar. Aynı Wi-Fi'daysanız yerel
+adresler seçilir, trafik router'dan bile çıkmaz.
+
+| Durum | Gecikme |
+|---|---|
+| Aynı Wi-Fi | 2–10 ms |
+| Farklı ağ | 30–80 ms |
+
+### Kim neyi hesaplıyor
+
+- **Ev sahibi** (daveti gönderen) topun fiziğini simüle eder, skoru tutar,
+  saniyede 30 kez durum yayınlar
+- **Misafir** kendi raketini ve vuruşunu gönderir; **kendi vuruşunu anında
+  uygular** (tahmin), ev sahibi onaylayınca otoriteye döner — kendi vuruşunda
+  gecikme hissetmezsin
+- İki taraf da kendi dünyasında +Z tarafında oynar; konum/hız/dönü tel üzerinde
+  Y ekseni etrafında 180° döndürülerek aktarılır. Oyun kodunun geri kalanı tek
+  oyunculu hâliyle aynı kalır
+- Skor ev sahibinde tutulur, misafirde sıralaması ters çevrilerek gösterilir
+- Bağlantı koparsa oyun otomatik yapay zekâya döner, maç yarıda kalmaz
+
+### Vercel'de
+
+`api/network.js` bir Edge Function. Ücretsiz planda çalışır — tek seferlik bir
+HTTP isteği, kalıcı bağlantı değil. Yerel geliştirmede `serve.py` aynı uç noktayı
+`/24` alt ağ üzerinden taklit eder, böylece aynı Wi-Fi'daki cihazlar geliştirme
+sırasında da birbirini bulur.
+
 ## Kamera açılmıyorsa
 
 Sayfa açılır açılmaz el takibi modeli arka planda inmeye başlar; menüde
@@ -115,7 +160,10 @@ js/hud.js       skor, ralli, hız, vuruş kalitesi
 js/effects.js   halkalar, kıvılcım, toz bulutu, sekme izleri
 js/audio.js     sentezlenmiş ses efektleri
 js/main.js      oyun döngüsü, kurallar, oyuncu konumu, rehberler
-serve.py        önbelleksiz yerel sunucu
+js/net.js       WebRTC eşleşme, koordinat aynalama, durum senkronu
+js/lobby.js     lobi arayüzü, davet akışı
+api/network.js  Vercel Edge Function — ağ kimliği (IP'nin tuzlanmış özeti)
+serve.py        önbelleksiz yerel sunucu + /api/network taklidi
 ```
 
 three.js ve MediaPipe CDN'den gelir; başka bağımlılık yok.

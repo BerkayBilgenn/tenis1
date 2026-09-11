@@ -88,10 +88,64 @@
         <button id="btn-camera" class="primary">📷 Kamerayı Başlat</button>
         <button id="btn-mouse" class="ghost">🖱 Fareyle Oyna</button>
       </div>
+      <button id="btn-mp" class="wide">👥 Arkadaşınla Oyna <em>(aynı Wi-Fi)</em></button>
       <p id="warm" class="warm"></p>
       <p id="start-status"></p>
       <p class="tiny">İlk açılışta el takibi modeli internetten iniyor (~8&nbsp;MB). Kamera görüntüsü cihazından çıkmaz.</p>
     </div>
+  </div>
+
+  <!-- LOBİ -->
+  <div id="lobby" class="overlay hidden">
+    <div class="panel lobby-panel">
+      <button class="close" id="lobby-close" aria-label="Kapat">✕</button>
+      <h2>Arkadaşınla Oyna</h2>
+      <p class="sub" id="lobby-status">Ağ aranıyor…</p>
+
+      <label class="field">
+        <span>ADIN</span>
+        <input id="lobby-name" maxlength="16" placeholder="Oyuncu" autocomplete="off" />
+      </label>
+
+      <div class="players">
+        <div class="players-head">
+          <span id="players-title">AĞINDAKİ OYUNCULAR</span>
+          <span class="livedot" id="lobby-dot"></span>
+        </div>
+        <ul id="player-list"></ul>
+      </div>
+
+      <details class="code-box">
+        <summary>Farklı ağdasınız? Oda kodu kullan</summary>
+        <div class="code-row">
+          <input id="room-code" maxlength="10" placeholder="ORNEK42" autocomplete="off" />
+          <button id="room-join">Gir</button>
+        </div>
+        <p class="tiny">İkiniz de aynı kodu yazın. Büyük/küçük harf farketmez.</p>
+      </details>
+
+      <p class="tiny" id="lobby-note">
+        Bağlantı kurulduktan sonra veri doğrudan iki cihaz arasında akar.
+        Aynı Wi-Fi'daysanız gecikme birkaç milisaniyedir.
+      </p>
+    </div>
+  </div>
+
+  <!-- DAVET -->
+  <div id="invite" class="overlay hidden">
+    <div class="panel invite-panel">
+      <h3><b id="invite-name">Oyuncu</b> seni maça çağırıyor</h3>
+      <div class="actions">
+        <button id="invite-yes" class="primary">Kabul Et</button>
+        <button id="invite-no" class="ghost">Reddet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAÇ ROZETİ -->
+  <div id="mp-badge" class="hidden">
+    <span class="pill"><i id="mp-dot"></i><b id="mp-name">—</b></span>
+    <button id="mp-quit">Ayrıl</button>
   </div>
 
   <div id="loading"><div class="spinner"></div><span>El takibi yükleniyor…</span></div>
